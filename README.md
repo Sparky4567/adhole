@@ -10,7 +10,7 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen?style=flat)](#-testing)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker)](https://www.docker.com/)
 
-[Quick Start](#-quick-start) • [Configuration & Usage Guide](#-quick-configuration--usage-guide-3-minutes) • [Docker Deployment](#-docker-deployment) • [Features](#-features) • [REST API](#-rest-api) • [Router Setup](#-pointing-devices-to-adhole)
+[Quick Start](#-quick-start) • [Configuration & Usage Guide](#-quick-configuration--usage-guide-3-minutes) • [ChromeOS Setup](#-chromeos-debian-bookworm-setup) • [Docker Deployment](#-docker-deployment) • [Features](#-features) • [REST API](#-rest-api) • [Router Setup](#-pointing-devices-to-adhole)
 
 </div>
 
@@ -133,6 +133,69 @@ Open **`http://localhost:3000`** in your browser:
   - **Upstream Resolvers**: Set your favorite upstream DNS (Cloudflare `1.1.1.1`, Google `8.8.8.8`, Quad9 `9.9.9.9`).
   - **Upstream Strategy**: Choose **Fastest Race** to race all providers simultaneously for minimum response time.
   - **SafeSearch**: Enable the switches for Google, Bing, DuckDuckGo, or YouTube to enforce family-friendly search filtering.
+
+---
+
+## 💻 ChromeOS (Debian Bookworm / Crostini) Setup
+
+In ChromeOS, Linux (Crostini) runs inside a VM container with its own virtual IP (typically `100.115.92.x`). ChromeOS bridges localhost from the container, allowing you to access the dashboard and route all Chromebook DNS queries through AdHole.
+
+### 1. Grant Bun Port 53 Permission
+```bash
+sudo setcap 'cap_net_bind_service=+ep' $(which bun)
+```
+
+### 2. Start AdHole
+```bash
+DNS_PORT=53 HTTP_PORT=3000 bun run src/index.ts
+```
+Open **[http://localhost:3000](http://localhost:3000)** (or `http://penguin.linux.test:3000`) in Chrome on your Chromebook to access the web dashboard.
+
+### 3. Find Your Linux Container IP
+```bash
+hostname -I | awk '{print $1}'
+```
+*(Example output: `100.115.92.26`)*
+
+### 4. Point ChromeOS to AdHole DNS
+1. Open **ChromeOS Settings** (Chromebook gear icon).
+2. Go to **Network** &rarr; click your connected **Wi-Fi** or **Ethernet**.
+3. Expand the **Network** subsection.
+4. Under **Name servers**, select **Custom name servers**.
+5. Enter your Linux container IP (e.g. `100.115.92.26`).
+6. *(Optional fallback)* In the second slot, enter `1.1.1.1`.
+
+### 5. Disable "Secure DNS" in Chrome Browser
+To prevent Chrome from bypassing local DNS through DNS-over-HTTPS (DoH):
+1. Navigate to **`chrome://settings/security`** in Chrome.
+2. Toggle **Use secure DNS** to **OFF** (or select "With your current service provider").
+
+### 6. (Optional) Auto-Start on Linux Boot via Systemd
+Create a systemd service so AdHole runs in the background automatically:
+
+```bash
+sudo tee /etc/systemd/system/adhole.service << 'EOF'
+[Unit]
+Description=AdHole DNS Server
+After=network.target
+
+[Service]
+Type=simple
+User=shelly
+WorkingDirectory=/home/shelly/github/runnable/adhole
+Environment="DNS_PORT=53"
+Environment="HTTP_PORT=3000"
+ExecStart=/home/shelly/.bun/bin/bun run src/index.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now adhole
+```
 
 ---
 
