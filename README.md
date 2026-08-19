@@ -10,7 +10,7 @@
 [![Tests](https://img.shields.io/badge/Tests-Passing-brightgreen?style=flat)](#-testing)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=flat&logo=docker)](https://www.docker.com/)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Docker Deployment](#-docker-deployment) • [Architecture](#-architecture) • [REST API](#-rest-api) • [Configuration](#-configuration) • [Router Setup](#-pointing-devices-to-adhole)
+[Quick Start](#-quick-start) • [Configuration & Usage Guide](#-quick-configuration--usage-guide-3-minutes) • [Docker Deployment](#-docker-deployment) • [Features](#-features) • [REST API](#-rest-api) • [Router Setup](#-pointing-devices-to-adhole)
 
 </div>
 
@@ -21,6 +21,151 @@
 **AdHole** is a network-wide ad blocker and privacy-protecting DNS server. It sinks ad networks, tracking domains, malware, and telemetry at the DNS level before they ever reach your devices, accelerating web browsing and shielding your home network.
 
 Built natively on **Bun** with `bun:sqlite`, AdHole delivers **sub-millisecond (< 0.1ms) filtering latency**, races multiple upstream DNS providers simultaneously, and provides a modern, responsive web dashboard with live WebSocket query streaming.
+
+---
+
+## 🚀 Quick Start
+
+### 1. Run with Bun
+
+```bash
+# Clone the repository
+git clone https://github.com/Sparky4567/adhole.git
+cd adhole
+
+# Install dependencies
+bun install
+
+# Start AdHole
+bun run start
+```
+
+Open your browser at **[http://localhost:3000](http://localhost:3000)** to access the dashboard.
+
+> [!TIP]
+> **Binding Port 53 without Root**:
+> On Linux, binding port `53` requires network capability. If run without privileges, AdHole automatically falls back to port `5353`.
+> To grant Bun permission to bind port `53` without `sudo`:
+> ```bash
+> sudo setcap 'cap_net_bind_service=+ep' $(which bun)
+> ```
+
+---
+
+## ⚡ Quick Configuration & Usage Guide (3 Minutes)
+
+Get up and running with AdHole in under 3 minutes by following these simple steps:
+
+### Step 1: Start AdHole
+Start the server using Docker or Bun as shown above. AdHole automatically binds:
+- **DNS Server**: UDP/TCP port `53` (or `5353` if unprivileged fallback)
+- **Web Dashboard**: `http://localhost:3000`
+
+### Step 2: Test DNS Resolution (Verification)
+Verify that AdHole is actively filtering queries using your terminal:
+
+```bash
+# Test an ad domain (Should resolve to 0.0.0.0 / Blocked)
+dig @127.0.0.1 -p 53 doubleclick.net +short
+# Output: 0.0.0.0
+
+# Test a regular domain (Should resolve to real IP)
+dig @127.0.0.1 -p 53 google.com +short
+# Output: 142.250.190.46
+```
+*(If running on fallback port `5353`, use `-p 5353`)*
+
+---
+
+### Step 3: Configure Your Device / OS
+
+#### 🐧 Linux (systemd-resolved / NetworkManager)
+```bash
+# Using resolvectl
+sudo resolvectl dns $(ip route show default | awk '{print $5}') 127.0.0.1
+
+# Or edit /etc/resolv.conf
+echo "nameserver 127.0.0.1" | sudo tee /etc/resolv.conf
+```
+
+#### 🍏 macOS
+```bash
+# Set primary DNS on Wi-Fi interface
+sudo networksetup -setdnsservers Wi-Fi 127.0.0.1
+```
+
+#### 🪟 Windows (PowerShell as Admin)
+```powershell
+Set-DnsClientServerAddress -InterfaceAlias "Wi-Fi" -ServerAddresses "127.0.0.1"
+```
+
+#### 🏠 Network-Wide (Router Setup)
+1. Open your router portal (e.g. `192.168.1.1`).
+2. Navigate to **DHCP / LAN Settings** -> **DNS Server**.
+3. Set Primary DNS to the local IP of your machine running AdHole (e.g. `192.168.1.50`).
+4. Save and restart the router. All connected home devices (TVs, phones, PCs, consoles) are now automatically ad-free!
+
+---
+
+### Step 4: Common Configuration Recipes in the Dashboard
+
+Open **`http://localhost:3000`** in your browser:
+
+#### 1. Add Blocklists & Update Gravity
+- Go to the **Gravity & Lists** tab.
+- Click **+ Add Blocklist** and enter any hosts or domain list URL (e.g. OISD, Firebog, StevenBlack).
+- Click **🚀 Update Gravity Lists Now** to download and compile the lists into memory.
+
+#### 2. Whitelist or Blacklist a Domain
+- **From Query Log**: Go to **Query Log**, find the domain, and click **🛡️ Allow** (Whitelist) or **🚫 Block** (Blacklist).
+- **Custom Patterns**: Go to **Custom Rules** -> Add exact domain, wildcard (`*.analytics.tiktok.com`), or regex (`^ad[0-9]+\.badsite\.com$`).
+
+#### 3. Map Internal Home Network Devices (Local DNS)
+- Go to the **Local DNS** tab.
+- Add your custom hostnames:
+  - `nas.home` &rarr; `192.168.1.100`
+  - `router.lan` &rarr; `192.168.1.1`
+  - `proxmox.local` &rarr; `192.168.1.200`
+- Access your servers by domain name without memorizing IPs!
+
+#### 4. Configure Upstream DNS & SafeSearch
+- Go to the **Settings** tab:
+  - **Upstream Resolvers**: Set your favorite upstream DNS (Cloudflare `1.1.1.1`, Google `8.8.8.8`, Quad9 `9.9.9.9`).
+  - **Upstream Strategy**: Choose **Fastest Race** to race all providers simultaneously for minimum response time.
+  - **SafeSearch**: Enable the switches for Google, Bing, DuckDuckGo, or YouTube to enforce family-friendly search filtering.
+
+---
+
+## 🐳 Docker Deployment
+
+### Using Docker Compose (Recommended)
+
+Create or use the provided `docker-compose.yml`:
+
+```yaml
+services:
+  adhole:
+    image: oven/bun:1-alpine
+    container_name: adhole
+    restart: unless-stopped
+    build: .
+    ports:
+      - "53:53/udp"
+      - "53:53/tcp"
+      - "3000:3000/tcp"
+    environment:
+      - DNS_PORT=53
+      - HTTP_PORT=3000
+      - UPSTREAM_DNS=1.1.1.1,1.0.0.1,8.8.8.8,9.9.9.9
+      - BLOCKING_MODE=ZERO_IP
+    volumes:
+      - ./data:/app/data
+```
+
+Run:
+```bash
+docker compose up -d
+```
 
 ---
 
@@ -93,70 +238,6 @@ flowchart TD
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-- [Bun](https://bun.sh) (v1.1+)
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/Sparky4567/adhole.git
-cd adhole
-
-# Install dependencies
-bun install
-
-# Start AdHole
-bun run start
-```
-
-Open your browser at **[http://localhost:3000](http://localhost:3000)** to access the dashboard.
-
-> [!TIP]
-> **Binding Port 53 without Root**:
-> On Linux, binding port `53` requires network capability. If run without privileges, AdHole will automatically fall back to port `5353`.
-> To grant Bun permission to bind port `53` without `sudo`:
-> ```bash
-> sudo setcap 'cap_net_bind_service=+ep' $(which bun)
-> ```
-
----
-
-## 🐳 Docker Deployment
-
-### Using Docker Compose (Recommended)
-
-Create or use the provided `docker-compose.yml`:
-
-```yaml
-services:
-  adhole:
-    image: oven/bun:1-alpine
-    container_name: adhole
-    restart: unless-stopped
-    build: .
-    ports:
-      - "53:53/udp"
-      - "53:53/tcp"
-      - "3000:3000/tcp"
-    environment:
-      - DNS_PORT=53
-      - HTTP_PORT=3000
-      - UPSTREAM_DNS=1.1.1.1,1.0.0.1,8.8.8.8,9.9.9.9
-      - BLOCKING_MODE=ZERO_IP
-    volumes:
-      - ./data:/app/data
-```
-
-Run:
-```bash
-docker compose up -d
-```
-
----
-
 ## ⚙️ Configuration & Environment Variables
 
 | Variable | Default | Description |
@@ -219,21 +300,6 @@ test/api.test.ts:           4 passed
 
 Total: 20 passed (100% pass rate)
 ```
-
----
-
-## 📱 Pointing Devices to AdHole
-
-### Option A: Network-Wide Protection (Router Setup)
-1. Open your router's administration portal (e.g. `192.168.1.1` or `192.168.0.1`).
-2. Go to **DHCP / Network Settings** -> **DNS Server**.
-3. Set the Primary DNS Server to the local IP of your machine running **AdHole** (e.g. `192.168.1.50`).
-4. Save and reboot your router. Every device on your Wi-Fi/LAN is now protected without client-side setup!
-
-### Option B: Single Machine Setup
-- **Linux**: Edit `/etc/resolv.conf` or set via NetworkManager (`nameserver 127.0.0.1`).
-- **macOS**: System Settings -> Network -> Wi-Fi/Ethernet -> Details -> DNS -> Add `127.0.0.1`.
-- **Windows**: Control Panel -> Network and Sharing Center -> Adapter Settings -> IPv4 Properties -> DNS: `127.0.0.1`.
 
 ---
 
